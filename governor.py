@@ -26,6 +26,8 @@ A_WALL = 1.2
 B_REQ = 0.0004
 ROUTE_MULT = 1.4      # route timing misses parsing and scheduling delay outside our handler
 ROUTE_REQ = 0.0005
+UNSEEN_FREE = 0.0005  # in-route plumbing above this means a starved CPU
+UNSEEN_MULT = 2.0     # unseen HTTP overhead assumed proportional to that excess
 
 
 class Gov:
@@ -37,20 +39,28 @@ class Gov:
         self.requests = 0
         self.route = 0.0        # whole-request wall time measured by the server routes
         self.route_req = 0
+        self.unseen = 0.0       # estimated HTTP time outside our route when the CPU is starved
 
     def charge(self, seconds: float, request: bool) -> None:
         self.wall += seconds
         if request:
             self.requests += 1
 
-    def reconcile(self, route_seconds: float) -> None:
-        """Server mode: wall time of a whole /act request (JSON, model, hooks)."""
+    def reconcile(self, route_seconds: float, hook_seconds: float = 0.0) -> None:
+        """Server mode: wall time of a whole /act request (JSON, model, hooks).
+
+        The plumbing inside the route normally costs ~0.2-0.3 ms. When it costs
+        much more, the CPU is starved, and the HTTP work outside our route (which
+        we cannot time) is slowed just as much, so charge an estimate of it too.
+        """
         self.route += route_seconds
         self.route_req += 1
+        plumbing = route_seconds - hook_seconds
+        self.unseen += max(0.0, plumbing - UNSEEN_FREE) * UNSEEN_MULT
 
     def charged(self) -> float:
         hooks = A_WALL * self.wall + B_REQ * self.requests
-        routes = ROUTE_MULT * self.route + ROUTE_REQ * self.route_req
+        routes = ROUTE_MULT * self.route + ROUTE_REQ * self.route_req + self.unseen
         return max(hooks, routes)
 
     def tier(self, hand_index: int) -> int:
