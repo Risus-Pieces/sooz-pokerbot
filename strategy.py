@@ -37,7 +37,7 @@ PARAMS = {
     "postflop_pot_only": True,  # bet/raise only pot-size after the flop (hides a sizing tell)
     "stab_range": True,        # after we check, judge their bet by how often they bet after our checks
     "preflop_pot_only": False, # also raise only pot-size preflop
-    "reraise_ev": False,       # count being re-raised in the value of a bet (fold weak hands to it)
+    "reraise_ev": True,        # count being re-raised in the value of a bet (fold weak hands to it)
     "street_resp": True,       # fold/raise responses to our bets tracked per street (not pooled postflop)
 }
 
