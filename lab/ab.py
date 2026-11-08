@@ -25,6 +25,7 @@ def main():
     ap.add_argument("--deals", type=int, default=1000)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--skip", default="checkfold,timeout")
+    ap.add_argument("--seed0", type=int, default=0)
     args = ap.parse_args()
     os.environ["SOOZ_DET"] = "1"
     A = tune.variant("ab_a", json.loads(args.a))
@@ -32,7 +33,7 @@ def main():
     skip = args.skip.split(",")
     opps = [p for p in sim.field_paths() if not any(x in p for x in skip)]
     opps += sorted(str(p) for p in Path(ROOT / "lab/field/anti").glob("*.py"))
-    jobs = [(v, o, f"ab{s}", args.deals) for v in (A, B) for o in opps for s in range(args.seeds)]
+    jobs = [(v, o, f"ab{args.seed0 + s}", args.deals) for v in (A, B) for o in opps for s in range(args.seeds)]
     res = sim.run_many(jobs, args.workers)
     by = {}
     for r in res:
