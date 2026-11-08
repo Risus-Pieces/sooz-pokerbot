@@ -20,7 +20,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from brain import Rollout, postflop_top_fraction, preflop_equity, preflop_top_fraction
+from evaluator import FULL_HOUSE, STRAIGHT, THREE_OF_A_KIND, TWO_PAIR, category_of
+from fasteval import score_one
 from game import Action, HandResult, Observation, Street
 
 PARAMS = {
@@ -29,7 +33,6 @@ PARAMS = {
     "raise_margin": -0.02,     # extra value (fraction of pot) a raise must beat a call by
     "oop_realize": 0.95,       # equity realized out of position before the river
     "min_top": 0.06,           # narrowest range we ever assume
-    "time_target": 3.0,        # seconds of thinking we aim to use per half
     "prior_weight": 4.0,       # pseudo-showdowns behind the range prior
 }
 
@@ -80,6 +83,65 @@ class Stats:
         return min(1.0, (prior_weight * prior / 2.0 + s) / (prior_weight + n) * 2.0)
 
 
+HALF_SEED = 20261108
+PURPOSE = {"hunter": 1, "learn": 2, "autopilot": 3}
+
+
+def rng_for(obs_or_hand, k: int, purpose: str) -> np.random.Generator:
+    """Deterministic generator per (hand, decision, purpose): changing how many
+    samples one decision uses can never shift any later decision."""
+    hand = obs_or_hand if isinstance(obs_or_hand, int) else obs_or_hand.hand_index
+    return np.random.default_rng([HALF_SEED, hand, k, PURPOSE[purpose]])
+
+
+def made_hand_rule(obs: Observation) -> Action:
+    """Zero-simulation fallback (~0.1 ms) used when the time bank is tight."""
+    legal = obs.legal_actions
+    cat = category_of(score_one(obs.hole_cards, obs.board))
+    if obs.to_call == 0:
+        need = THREE_OF_A_KIND if obs.street == Street.RIVER else STRAIGHT
+        if cat >= need and Action.RAISE_HALF in legal:
+            return Action.RAISE_HALF
+        return Action.CHECK_CALL
+    if cat >= FULL_HOUSE and Action.RAISE_POT in legal:
+        return Action.RAISE_POT
+    if cat >= STRAIGHT or (cat == TWO_PAIR and obs.to_call <= 0.5 * obs.pot):
+        return Action.CHECK_CALL
+    return Action.FOLD if Action.FOLD in legal else Action.CHECK_CALL
+
+
+def _opp_decision(memory: dict, facing: bool, is_raise: bool, is_fold: bool) -> None:
+    """Log one opponent decision for the autopilot detector."""
+    is_default = (is_fold if facing else not is_raise)
+    log = memory.setdefault("opp_dec", [])
+    log.append((facing, is_default, is_fold))
+    if len(log) > 400:
+        del log[:200]
+    ap = memory.get("autopilot", False)
+    if ap and not is_default:
+        memory["autopilot"] = False
+
+
+def autopilot_check(memory: dict, hand_index: int) -> bool:
+    """True when the opponent looks like it is being auto-played by the judge
+    (time bank empty or forfeited: checks when free, folds otherwise)."""
+    if memory.get("autopilot"):
+        return True
+    log = memory.get("opp_dec", [])
+    if hand_index < 100 or len(log) < 40:
+        return False
+    streak = log[-15:]
+    if not all(d for _, d, _ in streak):
+        return False
+    if sum(1 for f, _, fo in streak if f and fo) < 6:
+        return False
+    before = [x for x in log[:-15] if x[0]]
+    if before and sum(1 for x in before if x[2]) / len(before) >= 0.6:
+        return False   # it always folded this much: a real nit, not a timeout
+    memory["autopilot"] = True
+    return True
+
+
 def _update_model(obs: Observation, memory: dict) -> None:
     """Walk this hand's history and learn from opponent actions not yet seen."""
     stats: Stats = memory["stats"]
@@ -105,6 +167,7 @@ def _update_model(obs: Observation, memory: dict) -> None:
             continue
         if i >= seen:
             facing = my_tot > opp_tot
+            _opp_decision(memory, facing, is_raise, False)
             if facing and i_raised_last:
                 ctx = 1 if opp_raised_street else 0
                 stats.record_response(street, ctx, "raise" if is_raise else "call")
@@ -131,6 +194,8 @@ def learn_from_hand(result: HandResult, memory: dict) -> None:
         street, ctx = pending
         folded = (not result.went_to_showdown) and result.winner == "me"
         stats.record_response(street, ctx, "fold" if folded else "call")
+    if (not result.went_to_showdown) and result.winner == "me":
+        _opp_decision(memory, True, False, True)   # they folded facing our bet
     memory["pending"] = None
     if result.went_to_showdown and result.opp_hole is not None:
         for s in memory.get("aggr_streets", ()):
@@ -139,27 +204,27 @@ def learn_from_hand(result: HandResult, memory: dict) -> None:
             else:
                 board = result.board[: 2 + s]   # flop 3, turn 4, river 5 cards
                 share = postflop_top_fraction(result.opp_hole, board, memory.get("my_hole", ()),
-                                              96, memory["rng"])
+                                              96, rng_for(result.hand_index, 99, "learn"))
             stats.shown[0 if s == 0 else 1][0] += share
             stats.shown[0 if s == 0 else 1][1] += 1
     memory["aggr_streets"] = set()
     stats.hands += 1
 
 
-def _n_samples(obs: Observation, memory: dict, params: dict) -> int:
-    budget = params["time_target"] * (obs.hand_index + 1) / 1000.0
-    used = memory.get("think", 0.0)
-    if used > 6.5:
-        return 0
-    if used > budget * 1.6:
-        return 32
-    if used > budget * 1.2:
-        return 64
-    return params["n_samples"]
-
-
 def choose(obs: Observation, memory: dict, params: dict) -> Action:
     _update_model(obs, memory)
+    legal0 = obs.legal_actions
+    if autopilot_check(memory, obs.hand_index):
+        for a in (Action.RAISE_HALF, Action.RAISE_POT, Action.CHECK_CALL):
+            if a in legal0:
+                if a in RAISES:
+                    memory["pending"] = (obs.street, 0)
+                return a
+    gov = memory.get("gov")
+    tier = gov.tier(obs.hand_index) if gov is not None else 0
+    if tier >= 5:
+        return Action.CHECK_CALL if obs.to_call == 0 else (Action.FOLD if Action.FOLD in legal0 else Action.CHECK_CALL)
+    rng = rng_for(obs, len(obs.action_history), "hunter")
     stats: Stats = memory["stats"]
     legal = obs.legal_actions
     pot, to_call = obs.pot, obs.to_call
@@ -178,18 +243,16 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
         top = max(params["min_top"], top)
 
     if obs.street == Street.PREFLOP:
-        base = preflop_equity(obs.hole_cards, memory["rng"])
+        base = preflop_equity(obs.hole_cards, rng)
         e = base - params["pre_range_k"] * (1.0 - top)
 
         def eq_cont(f: float) -> float:
             return base - params["pre_range_k"] * (1.0 - top * (1.0 - f))
     else:
-        n = _n_samples(obs, memory, params)
+        n = params["n_samples"] if tier == 0 else (gov.samples(tier) if gov is not None else 0)
         if n == 0:
-            if to_call == 0:
-                return Action.CHECK_CALL
-            return Action.FOLD if Action.FOLD in legal else Action.CHECK_CALL
-        roll = Rollout(obs.hole_cards, obs.board, n, memory["rng"])
+            return made_hand_rule(obs)
+        roll = Rollout(obs.hole_cards, obs.board, n, rng)
         realize = params["oop_realize"] if (not obs.is_button and obs.street != Street.RIVER) else 1.0
         e = roll.eq(top) * realize
 

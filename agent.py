@@ -25,6 +25,10 @@ need to change it, and if you break it the judge can't talk to your bot.
 import os
 import traceback
 
+# One BLAS/OpenMP thread: the tournament gives us one core, extra threads only add overhead.
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -50,41 +54,63 @@ import time
 import numpy as np
 
 from brain import warm
+from governor import Gov
 from strategy import PARAMS, Stats, choose, learn_from_hand
 
 warm()  # load equity tables at startup, outside the time bank
 
 
+def _safe_action(obs: Observation) -> Action:
+    legal = obs.legal_actions
+    return Action.CHECK_CALL if Action.CHECK_CALL in legal else legal[0]
+
+
 def new_half(config: AgentConfig, memory: dict) -> None:
-    """Fresh opponent model and random generator every half."""
-    memory["rng"] = np.random.default_rng(20261108)
-    memory["stats"] = Stats()
-    memory["think"] = 0.0          # our own estimate of time-bank use
-    memory["pending"] = None       # (street, ctx) of our last raise awaiting a reply
-    memory["seen"] = (-1, 0)       # (hand_index, history length) already processed
+    """Fresh opponent model every half. Never raises: a failed /new-half would forfeit the half."""
+    try:
+        memory["stats"] = Stats()
+        memory["pending"] = None       # (street, ctx) of our last raise awaiting a reply
+        memory["seen"] = (-1, 0)       # (hand_index, history length) already processed
+        memory["think"] = 0.0
+        memory["gov"] = Gov(getattr(config, "time_bank_seconds", 8.0),
+                            getattr(config, "num_hands", 1000), PARAMS["n_samples"])
+    except Exception:  # noqa: BLE001
+        memory.clear()
+        memory["dead"] = True
 
 
 def choose_action(obs: Observation, memory: dict) -> Action:
     """Pick the action with the best estimated value; never crash."""
     t0 = time.perf_counter()
-    try:
-        action = choose(obs, memory, PARAMS)
-    except Exception:  # noqa: BLE001 - any bug falls back to a safe legal action
-        action = None
+    action = None
+    if not memory.get("dead"):
+        try:
+            action = choose(obs, memory, PARAMS)
+        except Exception:  # noqa: BLE001 - any bug falls back to a safe legal action
+            action = None
     if action not in obs.legal_actions:
-        action = Action.CHECK_CALL if Action.CHECK_CALL in obs.legal_actions else obs.legal_actions[0]
-    memory["think"] = memory.get("think", 0.0) + time.perf_counter() - t0
+        action = _safe_action(obs)
+    dt = time.perf_counter() - t0
+    memory["think"] = memory.get("think", 0.0) + dt
+    gov = memory.get("gov")
+    if gov is not None:
+        gov.charge(dt, True)
     return action
 
 
 def on_hand_end(result: HandResult, memory: dict) -> None:
     """Update the opponent model with how the hand ended (and any showdown)."""
     t0 = time.perf_counter()
-    try:
-        learn_from_hand(result, memory)
-    except Exception:  # noqa: BLE001
-        memory["pending"] = None
-    memory["think"] = memory.get("think", 0.0) + time.perf_counter() - t0
+    if not memory.get("dead"):
+        try:
+            learn_from_hand(result, memory)
+        except Exception:  # noqa: BLE001
+            memory["pending"] = None
+    dt = time.perf_counter() - t0
+    memory["think"] = memory.get("think", 0.0) + dt
+    gov = memory.get("gov")
+    if gov is not None:
+        gov.charge(dt, False)
 
 # ===== END OF YOUR CODE =====
 
