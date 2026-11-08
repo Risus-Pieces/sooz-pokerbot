@@ -40,6 +40,7 @@ PARAMS = {
     "reraise_ev": True,        # count being re-raised in the value of a bet (fold weak hands to it)
     "street_resp": True,       # fold/raise responses to our bets tracked per street (not pooled postflop)
     "raise_range": True,       # if they raise our postflop bet, cap their range at how often they do that
+    "reraise_ctx": True,       # separate response counts for our 3-bets after we already raised (S5)
 }
 
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
@@ -57,8 +58,8 @@ class Stats:
     # responses to OUR raises, [preflop, postflop][ctx]; ctx 0 = they had not
     # raised this street yet (our bet / open), ctx 1 = we are re-raising them.
     resp: list = field(default_factory=lambda: [
-        [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}],
-        [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}]])
+        [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}],
+        [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}]])
     # when nobody has bet yet this street: [preflop open, postflop] -> passive / aggressive
     open_: list = field(default_factory=lambda: [
         {"passive": 3.0, "aggr": 2.0}, {"passive": 3.0, "aggr": 2.0}])
@@ -69,8 +70,9 @@ class Stats:
 
     # the same responses kept per street (pre/flop/turn/river)
     resp4: list = field(default_factory=lambda: [
-        [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}] for _ in range(4)])
+        [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}] for _ in range(4)])
     per_street: bool = False
+    ctx2: bool = False          # keep our 3-bet-after-raising spots in their own context
 
     def record_response(self, street, ctx: int, kind: str) -> None:
         self.resp[_g(street)][ctx][kind] += 1.0
@@ -171,6 +173,7 @@ def _update_model(obs: Observation, memory: dict) -> None:
     i_raised_last = False
     i_checked_street = False
     opp_raised_street = False
+    my_raises_street = 0
     aggr_streets = set()
     for i, a in enumerate(obs.action_history):
         if a.street != street:
@@ -179,18 +182,23 @@ def _update_model(obs: Observation, memory: dict) -> None:
             i_raised_last = False
             i_checked_street = False
             opp_raised_street = False
+            my_raises_street = 0
         is_raise = a.action in RAISES
         if a.is_me:
             if a.action == Action.CHECK_CALL and my_tot == opp_tot:
                 i_checked_street = True
             my_tot = a.street_total
             i_raised_last = is_raise
+            if is_raise:
+                my_raises_street += 1
             continue
         if i >= seen:
             facing = my_tot > opp_tot
             _opp_decision(memory, facing, is_raise, False)
             if facing and i_raised_last:
                 ctx = 1 if opp_raised_street else 0
+                if stats.ctx2 and my_raises_street >= 2:
+                    ctx = 2
                 stats.record_response(street, ctx, "raise" if is_raise else "call")
                 memory["pending"] = None
             elif not facing:
@@ -237,6 +245,7 @@ def learn_from_hand(result: HandResult, memory: dict) -> None:
 def choose(obs: Observation, memory: dict, params: dict) -> Action:
     _update_model(obs, memory)
     memory["stats"].per_street = bool(params.get("street_resp"))
+    memory["stats"].ctx2 = bool(params.get("reraise_ctx"))
     legal0 = obs.legal_actions
     if autopilot_check(memory, obs.hand_index):
         for a in (Action.RAISE_HALF, Action.RAISE_POT, Action.CHECK_CALL):
@@ -257,6 +266,9 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
     if obs.street == Street.PREFLOP and not obs.is_button and to_call > 0 and opp_raises == 0:
         opp_raises = 0  # facing only the blind
     ctx = 1 if opp_raises else 0
+    if (params.get("reraise_ctx") and opp_raises
+            and any(a.is_me and a.street == obs.street and a.action in RAISES for a in obs.action_history)):
+        ctx = 2   # we would be re-raising after already raising this street (3-bet or more)
     pw = params["prior_weight"]
 
     top = 1.0
