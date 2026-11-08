@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 *.json
+.venv312/
+data/eval_both.bin
+solver/test_core
+solver/pool
+solver/mccfr

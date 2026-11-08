@@ -3,3 +3,4 @@
 **/__pycache__
 lab
 *.json
+.venv312
