@@ -7,3 +7,5 @@ data/eval_both.bin
 solver/test_core
 solver/pool
 solver/mccfr
+data/bp/latest.npz
+solver/mccfr2

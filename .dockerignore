@@ -4,3 +4,8 @@
 lab
 *.json
 .venv312
+data/eval_both.bin
+data/bp/latest.npz
+solver
+docs
+tests

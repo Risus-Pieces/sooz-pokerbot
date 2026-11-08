@@ -1,0 +1,6 @@
+final_mean                   mean +4.751  CI [+4.035,+5.466]  BEATS hunter  per-seed +4.49 +4.38 +4.47 +5.66
+avg_last10_means             mean +3.923  CI [+3.218,+4.629]  BEATS hunter  per-seed +4.22 +3.65 +4.38 +3.44
+mean_g31                     mean +3.895  CI [+3.189,+4.602]  BEATS hunter  per-seed +4.54 +3.65 +3.09 +4.30
+indiv_g9_+5.26               mean +3.492  CI [+2.807,+4.178]  BEATS hunter  per-seed +4.51 +3.01 +3.88 +2.58
+indiv_g23_+4.94              mean +4.181  CI [+3.441,+4.920]  BEATS hunter  per-seed +3.74 +4.10 +3.49 +5.39
+indiv_g40_+4.91              mean +3.860  CI [+3.177,+4.542]  BEATS hunter  per-seed +4.16 +4.17 +3.32 +3.79

@@ -53,11 +53,27 @@ import time
 
 import numpy as np
 
+import controller
 from brain import warm
 from governor import Gov
-from strategy import PARAMS, Stats, choose, learn_from_hand
+from strategy import PARAMS, Stats, _update_model, choose, learn_from_hand, rng_for
 
 warm()  # load equity tables at startup, outside the time bank
+if os.environ.get("SOOZ_PARAMS"):   # lab only: override strategy parameters
+    import json as _json
+    PARAMS.update(_json.loads(os.environ["SOOZ_PARAMS"]))
+
+# The blueprint (MCCFR strategy) is a hedge arm; any load problem just disables it.
+BP = None
+if os.environ.get("SOOZ_NO_BP") != "1":
+    try:
+        from blueprint import Blueprint, sample as bp_sample
+        _bp = Blueprint()
+        _bp_path = os.environ.get("SOOZ_BP_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "bp", "ship.npz")
+        if _bp.load(_bp_path):
+            BP = _bp
+    except Exception:  # noqa: BLE001
+        BP = None
 
 
 def _safe_action(obs: Observation) -> Action:
@@ -74,9 +90,31 @@ def new_half(config: AgentConfig, memory: dict) -> None:
         memory["think"] = 0.0
         memory["gov"] = Gov(getattr(config, "time_bank_seconds", 8.0),
                             getattr(config, "num_hands", 1000), PARAMS["n_samples"])
+        memory["bpcache"] = {}
+        controller.init(memory)
     except Exception:  # noqa: BLE001
         memory.clear()
         memory["dead"] = True
+
+
+def _decide(obs: Observation, memory: dict) -> Action:
+    memory["last_board"] = obs.board
+    gov = memory.get("gov")
+    tier = gov.tier(obs.hand_index) if gov is not None else 0
+    arm = "H"
+    if BP is not None and not memory.get("autopilot"):
+        arm = controller.pick_arm(obs, memory, True, tier, rng_for(obs.hand_index, 0, "autopilot"))
+    if arm == "B":
+        _update_model(obs, memory)          # hunter keeps learning on blueprint hands
+        rng = rng_for(obs, len(obs.action_history), "learn")
+        probs = BP.policy(obs, memory["bpcache"], rng)
+        if probs:
+            a = bp_sample(probs, rng)
+            if a in obs.legal_actions:
+                if a in (Action.RAISE_HALF, Action.RAISE_POT):
+                    memory["pending"] = (obs.street, 1 if controller.opp_raised_this_street(obs) else 0)
+                return a
+    return choose(obs, memory, PARAMS)
 
 
 def choose_action(obs: Observation, memory: dict) -> Action:
@@ -85,7 +123,7 @@ def choose_action(obs: Observation, memory: dict) -> Action:
     action = None
     if not memory.get("dead"):
         try:
-            action = choose(obs, memory, PARAMS)
+            action = _decide(obs, memory)
         except Exception:  # noqa: BLE001 - any bug falls back to a safe legal action
             action = None
     if action not in obs.legal_actions:
@@ -102,6 +140,11 @@ def on_hand_end(result: HandResult, memory: dict) -> None:
     """Update the opponent model with how the hand ended (and any showdown)."""
     t0 = time.perf_counter()
     if not memory.get("dead"):
+        try:
+            if "arms" in memory:
+                controller.record_hand(result, memory, rng_for(result.hand_index, 98, "learn"))
+        except Exception:  # noqa: BLE001
+            pass
         try:
             learn_from_hand(result, memory)
         except Exception:  # noqa: BLE001
