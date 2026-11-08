@@ -1,0 +1,97 @@
+== r5_mid vs agent
+hands 4000  hunter -0.587 bb/hand
+by street: pre +0.594  flop -1.110  turn -0.128  river +0.057
+by phase:  0-199 -0.70  200-399 -0.42  400-599 -1.11  600-799 +0.32  800-999 -1.03
+chips by hunter's FIRST action on each street (n, bb/hand contribution, bb/occurrence):
+   flop: unopened bet-pot             n= 3323 -1.115 -1.34
+   turn: unopened bet-pot             n=  138 -0.079 -2.29
+   turn: unopened check               n=  358 -0.033 -0.36
+   river: facing-half call            n=   12 -0.026 -8.67
+   river: facing-half raise-pot       n=   13 -0.020 -6.15
+   turn: facing-half call             n=   92 -0.018 -0.79
+   river: unopened check              n=  234 -0.014 -0.24
+   river: facing-pot raise-pot        n=    1 -0.008 -31.00
+   flop: facing-half call             n=   49 -0.002 -0.16
+   river: facing-pot call             n=    2 -0.001 -1.00
+   pre: vs-blind fold                 n=    2 -0.000 -0.50
+   flop: facing-half fold             n=   29 +0.000 +0.00
+   river: facing-half fold            n=   36 +0.000 +0.00
+   turn: facing-half fold             n=  121 +0.000 +0.00
+   turn: facing-pot fold              n=    3 +0.000 +0.00
+   river: facing-pot fold             n=    3 +0.000 +0.00
+   flop: unopened check               n=  498 +0.001 +0.01
+   turn: facing-half raise-pot        n=   31 +0.002 +0.29
+   flop: facing-half raise-pot        n=   31 +0.007 +0.87
+   pre: vs-blind call                 n=  719 +0.029 +0.16
+   pre: unopened check                n=  632 +0.034 +0.21
+   pre: unopened bet-half             n=  412 +0.045 +0.43
+   pre: vs-blind bet-half             n=  364 +0.067 +0.73
+   river: unopened bet-pot            n=   83 +0.125 +6.04
+   pre: vs-blind bet-pot              n=  915 +0.173 +0.76
+   pre: unopened bet-pot              n=  956 +0.246 +1.03
+end of hand (n, bb/hand contribution, hunter would-win@showdown):
+   H folds flop     n=  611 -0.895  ww=0.24
+   H folds pre      n=   14 -0.003  ww=0.21
+   H folds river    n=   83 -0.151  ww=0.07
+   H folds turn     n=  232 -0.253  ww=0.18
+   O folds flop     n= 1965 +1.273  ww=0.63
+   O folds pre      n=   56 +0.014  ww=0.84
+   O folds river    n=   22 +0.027  ww=1.00
+   O folds turn     n=   31 +0.048  ww=0.84
+   showdown         n=  986 -0.646  ww=0.47
+hunter facing opponent bet/raise (would-win share):
+   flop H-call      n=  365 ww=0.37
+   flop H-fold      n=  611 ww=0.24
+   flop H-raise-pot n=  746 ww=0.48
+   pre H-call       n=    5 ww=0.40
+   pre H-fold       n=   12 ww=0.25
+   pre H-raise-half n=    2 ww=0.50
+   river H-call     n=   39 ww=0.32
+   river H-fold     n=   83 ww=0.07
+   river H-raise-pot n=   19 ww=0.50
+   turn H-call      n=  120 ww=0.42
+   turn H-fold      n=  232 ww=0.18
+   turn H-raise-pot n=   39 ww=0.49
+hunter unopened postflop actions (would-win share):
+   flop H-bet-pot   n= 3323 ww=0.51
+   flop H-check     n=  498 ww=0.37
+   river H-bet-pot  n=   83 ww=0.80
+   river H-check    n=  234 ww=0.41
+   turn H-bet-pot   n=  138 ww=0.51
+   turn H-check     n=  358 ww=0.36
+worst lines for hunter (street:line  n  bb/hand-total  bb/occurrence):
+   flop:OxHpOpHpOc            293 -0.311 -4.25
+   flop:HpOpHf                287 -0.272 -3.79
+   flop:OxHpOpHf              232 -0.215 -3.72
+   flop:HpOpHc                110 -0.168 -6.11
+   flop:OxHpOpHc              119 -0.136 -4.57
+   flop:OxHpOpHpOpHf           14 -0.091 -26.00
+   flop:OxHpOpHpOpHc           32 -0.088 -10.97
+   turn:HpOc                   75 -0.083 -4.41
+   flop:HpOpHpOc              269 -0.033 -0.49
+   flop:HpOpHpOpHf              5 -0.033 -26.00
+   river:OhHpOc                 9 -0.027 -12.11
+   river:OhHc                  12 -0.026 -8.67
+   turn:HxOhHpOc                7 -0.025 -14.00
+   turn:OhHc                   92 -0.018 -0.79
+best lines for hunter:
+   pre:OcHpOc                 927 +0.239 +1.03
+   pre:HpOc                   891 +0.167 +0.75
+   flop:OxHpOpHpOf             46 +0.142 +12.35
+   flop:HpOpHpOf               27 +0.080 +11.85
+   river:OxHpOc                19 +0.070 +14.68
+   pre:HhOc                   364 +0.067 +0.73
+   pre:OcHhOc                 409 +0.044 +0.43
+   pre:OcHx                   632 +0.034 +0.21
+   river:OxHpOpHc               6 +0.032 +21.17
+   pre:HcOx                   700 +0.032 +0.18
+hunter model (mean by 200-hand bucket):
+   post:aggr  0.23 0.22 0.22 0.21 0.22
+   post:f0    0.51 0.52 0.51 0.50 0.50
+   post:f1    0.18 0.17 0.15 0.13 0.14
+   post:top   0.47 0.62 0.64 0.64 0.63
+   pre:aggr   0.05 0.02 0.01 0.01 0.01
+   pre:f0     0.07 0.03 0.03 0.02 0.03
+   pre:f1     0.17 0.17 0.16 0.16 0.16
+   pre:top    0.05 0.02 0.01 0.01 0.01
+   hunter think max 3.12s

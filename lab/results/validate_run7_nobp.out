@@ -1,0 +1,5 @@
+final_mean                   mean -0.271  CI [-0.664,+0.121]  chop  per-seed -0.32 -0.29 -0.55 +0.07
+avg_last10_means             mean +0.246  CI [-0.170,+0.662]  chop  per-seed +0.19 +0.27 -0.06 +0.59
+mean_g6                      mean +0.722  CI [+0.283,+1.162]  BEATS hunter  per-seed +0.09 +1.25 +0.82 +0.72
+indiv_g35_+1.70              mean +0.920  CI [+0.363,+1.478]  BEATS hunter  per-seed +0.74 +1.54 +0.75 +0.65
+indiv_g13_+1.49              mean +0.615  CI [+0.014,+1.217]  BEATS hunter  per-seed +1.23 +0.32 +0.47 +0.43

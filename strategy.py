@@ -41,6 +41,7 @@ PARAMS = {
     "street_resp": True,       # fold/raise responses to our bets tracked per street (not pooled postflop)
     "raise_range": True,       # if they raise our postflop bet, cap their range at how often they do that
     "reraise_ctx": True,       # separate response counts for our 3-bets after we already raised (S5)
+    "decay": True,             # recency-weight aggression, stab and showdown evidence (S6c)
 }
 
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
@@ -73,6 +74,7 @@ class Stats:
         [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}] for _ in range(4)])
     per_street: bool = False
     ctx2: bool = False          # keep our 3-bet-after-raising spots in their own context
+    decay: bool = False         # recency-weight aggression / stab / showdown evidence
 
     def record_response(self, street, ctx: int, kind: str) -> None:
         self.resp[_g(street)][ctx][kind] += 1.0
@@ -202,8 +204,14 @@ def _update_model(obs: Observation, memory: dict) -> None:
                 stats.record_response(street, ctx, "raise" if is_raise else "call")
                 memory["pending"] = None
             elif not facing:
+                if stats.decay:
+                    for _k in stats.open_[_g(street)]:
+                        stats.open_[_g(street)][_k] *= 0.99
                 stats.open_[_g(street)]["aggr" if is_raise else "passive"] += 1.0
                 if street != Street.PREFLOP and i_checked_street:
+                    if stats.decay:
+                        for _k in stats.stab:
+                            stats.stab[_k] *= 0.98
                     stats.stab["aggr" if is_raise else "passive"] += 1.0
             elif street == Street.PREFLOP and my_tot == 2:
                 stats.open_[0]["aggr" if is_raise else "passive"] += 1.0
@@ -236,8 +244,12 @@ def learn_from_hand(result: HandResult, memory: dict) -> None:
                 board = result.board[: 2 + s]   # flop 3, turn 4, river 5 cards
                 share = postflop_top_fraction(result.opp_hole, board, memory.get("my_hole", ()),
                                               96, rng_for(result.hand_index, 99, "learn"))
-            stats.shown[0 if s == 0 else 1][0] += share
-            stats.shown[0 if s == 0 else 1][1] += 1
+            g_ = 0 if s == 0 else 1
+            if stats.decay:
+                stats.shown[g_][0] *= 0.99
+                stats.shown[g_][1] *= 0.99
+            stats.shown[g_][0] += share
+            stats.shown[g_][1] += 1
     memory["aggr_streets"] = set()
     stats.hands += 1
 
@@ -246,6 +258,7 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
     _update_model(obs, memory)
     memory["stats"].per_street = bool(params.get("street_resp"))
     memory["stats"].ctx2 = bool(params.get("reraise_ctx"))
+    memory["stats"].decay = bool(params.get("decay"))
     legal0 = obs.legal_actions
     if autopilot_check(memory, obs.hand_index):
         for a in (Action.RAISE_HALF, Action.RAISE_POT, Action.CHECK_CALL):

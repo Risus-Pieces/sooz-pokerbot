@@ -22,3 +22,11 @@ g 20 mean-cand +0.90  best +2.25  avg +0.91  sigma 0.173  27.3min
 g 21 mean-cand +0.19  best +1.95  avg +0.59  sigma 0.173  28.8min
 g 22 mean-cand +2.03  best +3.31  avg +1.49  sigma 0.177  30.3min
 g 23 mean-cand +0.95  best +2.42  avg +1.52  sigma 0.182  31.6min
+g 24 mean-cand +0.11  best +2.95  avg +1.62  sigma 0.188  33.0min
+g 25 mean-cand +0.97  best +3.03  avg +1.02  sigma 0.192  34.5min
+g 26 mean-cand +1.96  best +3.82  avg +2.40  sigma 0.196  36.2min
+g 27 mean-cand -0.06  best +1.95  avg +0.42  sigma 0.196  37.8min
+g 28 mean-cand +0.94  best +2.42  avg +1.53  sigma 0.196  39.2min
+g 29 mean-cand +1.01  best +2.04  avg +0.21  sigma 0.194  40.4min
+g 30 mean-cand +1.26  best +2.37  avg -0.23  sigma 0.191  41.6min
+g 31 mean-cand +0.85  best +2.46  avg +1.00  sigma 0.190  43.0min
