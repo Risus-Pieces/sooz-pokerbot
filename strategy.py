@@ -39,6 +39,7 @@ PARAMS = {
     "preflop_pot_only": False, # also raise only pot-size preflop
     "reraise_ev": True,        # count being re-raised in the value of a bet (fold weak hands to it)
     "street_resp": True,       # fold/raise responses to our bets tracked per street (not pooled postflop)
+    "raise_range": True,       # if they raise our postflop bet, cap their range at how often they do that
 }
 
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
@@ -265,6 +266,9 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
                 and any(a.is_me and a.street == obs.street and a.action == Action.CHECK_CALL
                         for a in obs.action_history)):
             top = max(top, stats.stab_rate())
+        if (params.get("raise_range") and opp_raises == 1 and obs.street != Street.PREFLOP
+                and any(a.is_me and a.street == obs.street and a.action in RAISES for a in obs.action_history)):
+            top = min(top, stats.raise_rate(obs.street, 0))
         if opp_raises >= 2:
             top *= max(0.25, stats.raise_rate(obs.street, 1))
         top = max(params["min_top"], top)
