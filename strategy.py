@@ -38,6 +38,7 @@ PARAMS = {
     "stab_range": True,        # after we check, judge their bet by how often they bet after our checks
     "preflop_pot_only": False, # also raise only pot-size preflop
     "reraise_ev": False,       # count being re-raised in the value of a bet (fold weak hands to it)
+    "street_resp": True,       # fold/raise responses to our bets tracked per street (not pooled postflop)
 }
 
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
@@ -65,11 +66,17 @@ class Stats:
     # showdown evidence on how strong their aggressive hands are: [sum of top-shares, count]
     shown: list = field(default_factory=lambda: [[0.0, 0], [0.0, 0]])
 
+    # the same responses kept per street (pre/flop/turn/river)
+    resp4: list = field(default_factory=lambda: [
+        [{"fold": 3.0, "call": 4.0, "raise": 1.0}, {"fold": 1.0, "call": 3.0, "raise": 2.0}] for _ in range(4)])
+    per_street: bool = False
+
     def record_response(self, street, ctx: int, kind: str) -> None:
         self.resp[_g(street)][ctx][kind] += 1.0
+        self.resp4[int(street)][ctx][kind] += 1.0
 
     def _r(self, street, ctx: int, kind: str) -> float:
-        r = self.resp[_g(street)][ctx]
+        r = self.resp4[int(street)][ctx] if self.per_street else self.resp[_g(street)][ctx]
         return r[kind] / (r["fold"] + r["call"] + r["raise"])
 
     def fold_rate(self, street, ctx: int) -> float:
@@ -228,6 +235,7 @@ def learn_from_hand(result: HandResult, memory: dict) -> None:
 
 def choose(obs: Observation, memory: dict, params: dict) -> Action:
     _update_model(obs, memory)
+    memory["stats"].per_street = bool(params.get("street_resp"))
     legal0 = obs.legal_actions
     if autopilot_check(memory, obs.hand_index):
         for a in (Action.RAISE_HALF, Action.RAISE_POT, Action.CHECK_CALL):
