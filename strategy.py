@@ -35,6 +35,7 @@ PARAMS = {
     "min_top": 0.06,           # narrowest range we ever assume
     "prior_weight": 4.0,       # pseudo-showdowns behind the range prior
     "postflop_pot_only": True,  # bet/raise only pot-size after the flop (hides a sizing tell)
+    "stab_range": True,        # after we check, judge their bet by how often they bet after our checks
 }
 
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
@@ -57,6 +58,8 @@ class Stats:
     # when nobody has bet yet this street: [preflop open, postflop] -> passive / aggressive
     open_: list = field(default_factory=lambda: [
         {"passive": 3.0, "aggr": 2.0}, {"passive": 3.0, "aggr": 2.0}])
+    # postflop, after WE checked this street: passive / aggressive (their "stab" frequency)
+    stab: dict = field(default_factory=lambda: {"passive": 2.0, "aggr": 2.0})
     # showdown evidence on how strong their aggressive hands are: [sum of top-shares, count]
     shown: list = field(default_factory=lambda: [[0.0, 0], [0.0, 0]])
 
@@ -76,6 +79,9 @@ class Stats:
     def aggr_rate(self, street) -> float:
         o = self.open_[_g(street)]
         return o["aggr"] / (o["aggr"] + o["passive"])
+
+    def stab_rate(self) -> float:
+        return self.stab["aggr"] / (self.stab["aggr"] + self.stab["passive"])
 
     def bet_range(self, street, prior_weight: float) -> float:
         """Estimated top fraction of hands this opponent bets with."""
@@ -153,6 +159,7 @@ def _update_model(obs: Observation, memory: dict) -> None:
     my_tot, opp_tot = (1, 2) if obs.is_button else (2, 1)
     street = Street.PREFLOP
     i_raised_last = False
+    i_checked_street = False
     opp_raised_street = False
     aggr_streets = set()
     for i, a in enumerate(obs.action_history):
@@ -160,9 +167,12 @@ def _update_model(obs: Observation, memory: dict) -> None:
             street = a.street
             my_tot = opp_tot = 0
             i_raised_last = False
+            i_checked_street = False
             opp_raised_street = False
         is_raise = a.action in RAISES
         if a.is_me:
+            if a.action == Action.CHECK_CALL and my_tot == opp_tot:
+                i_checked_street = True
             my_tot = a.street_total
             i_raised_last = is_raise
             continue
@@ -175,6 +185,8 @@ def _update_model(obs: Observation, memory: dict) -> None:
                 memory["pending"] = None
             elif not facing:
                 stats.open_[_g(street)]["aggr" if is_raise else "passive"] += 1.0
+                if street != Street.PREFLOP and i_checked_street:
+                    stats.stab["aggr" if is_raise else "passive"] += 1.0
             elif street == Street.PREFLOP and my_tot == 2:
                 stats.open_[0]["aggr" if is_raise else "passive"] += 1.0
         if is_raise:
@@ -239,6 +251,10 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
     top = 1.0
     if opp_raises:
         top = stats.bet_range(obs.street, pw)
+        if (params.get("stab_range") and obs.street != Street.PREFLOP and opp_raises == 1
+                and any(a.is_me and a.street == obs.street and a.action == Action.CHECK_CALL
+                        for a in obs.action_history)):
+            top = max(top, stats.stab_rate())
         if opp_raises >= 2:
             top *= max(0.25, stats.raise_rate(obs.street, 1))
         top = max(params["min_top"], top)
