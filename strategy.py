@@ -34,6 +34,7 @@ PARAMS = {
     "oop_realize": 0.95,       # equity realized out of position before the river
     "min_top": 0.06,           # narrowest range we ever assume
     "prior_weight": 4.0,       # pseudo-showdowns behind the range prior
+    "postflop_pot_only": True,  # bet/raise only pot-size after the flop (hides a sizing tell)
 }
 
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
@@ -266,7 +267,10 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
     if any(a in legal for a in RAISES):
         f = stats.fold_rate(obs.street, ctx)
         e_c = eq_cont(f)
-        for a in RAISES:
+        sizes = RAISES if (obs.street == Street.PREFLOP or not params.get("postflop_pot_only")) else (Action.RAISE_POT,)
+        if Action.RAISE_POT not in legal:
+            sizes = RAISES
+        for a in sizes:
             if a in legal:
                 r = obs.raise_to[a]
                 added = r - obs.my_bet

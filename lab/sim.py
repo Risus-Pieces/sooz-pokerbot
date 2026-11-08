@@ -103,6 +103,13 @@ def play_match(path_a: str, path_b: str, seed, deals: int):
     }
 
 
+def expected_points(z: float) -> float:
+    """Chance-weighted points for a match whose true z-statistic is z (win 1, chop 0.5)."""
+    phi = lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+    win, lose = phi(z - CHOP_Z), phi(-z - CHOP_Z)
+    return win + 0.5 * (1.0 - win - lose)
+
+
 def field_paths() -> list[str]:
     return sorted(str(p) for p in FIELD_DIR.glob("*.py") if not p.name.startswith("_"))
 
@@ -132,12 +139,15 @@ def main() -> None:
     t = time.time()
     results = run_many(jobs, args.workers)
     total = 0.0
-    print(f"{'opponent':28}{'seed':>6}{'bb/deal':>9}{'95% CI':>20}{'pts':>5}{'errA':>5}{'thinkA s':>9}")
+    print(f"{'opponent':28}{'seed':>6}{'bb/deal':>9}{'95% CI':>20}{'z':>7}{'pts':>5}{'errA':>5}{'thinkA s':>9}")
+    ep = 0.0
     for r in results:
         total += r["points"]
+        z = r["mean"] / r["se"] if r["se"] > 0 else 0.0
+        ep += expected_points(z)
         print(f"{Path(r['b']).stem:28}{r['seed']:>6}{r['mean']:9.3f}   [{r['lo']:7.3f},{r['hi']:7.3f}]"
-              f"{r['points']:5.1f}{r['err_a']:5d}{r['think_a']:9.2f}")
-    print(f"points {total}/{len(results)}   ({time.time() - t:.0f}s)")
+              f"{z:7.2f}{r['points']:5.1f}{r['err_a']:5d}{r['think_a']:9.2f}")
+    print(f"points {total}/{len(results)}   expected points {ep:.2f}   ({time.time() - t:.0f}s)")
 
 
 if __name__ == "__main__":
