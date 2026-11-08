@@ -36,6 +36,8 @@ PARAMS = {
     "prior_weight": 4.0,       # pseudo-showdowns behind the range prior
     "postflop_pot_only": True,  # bet/raise only pot-size after the flop (hides a sizing tell)
     "stab_range": True,        # after we check, judge their bet by how often they bet after our checks
+    "preflop_pot_only": False, # also raise only pot-size preflop
+    "reraise_ev": False,       # count being re-raised in the value of a bet (fold weak hands to it)
 }
 
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
@@ -283,7 +285,8 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
     if any(a in legal for a in RAISES):
         f = stats.fold_rate(obs.street, ctx)
         e_c = eq_cont(f)
-        sizes = RAISES if (obs.street == Street.PREFLOP or not params.get("postflop_pot_only")) else (Action.RAISE_POT,)
+        pot_only = params.get("preflop_pot_only") if obs.street == Street.PREFLOP else params.get("postflop_pot_only")
+        sizes = (Action.RAISE_POT,) if pot_only else RAISES
         if Action.RAISE_POT not in legal:
             sizes = RAISES
         for a in sizes:
@@ -291,7 +294,15 @@ def choose(obs: Observation, memory: dict, params: dict) -> Action:
                 r = obs.raise_to[a]
                 added = r - obs.my_bet
                 final_pot = pot + added + (r - obs.opp_bet)
-                values[a] = f * pot + (1.0 - f) * (e_c * final_pot - added) - params["raise_margin"] * pot
+                if params.get("reraise_ev"):
+                    q = min(stats.raise_rate(obs.street, ctx), 1.0 - f)
+                    e_r = eq_cont(1.0 - 0.4 * (1.0 - f))          # vs their narrower re-raising range
+                    # facing a pot re-raise: call it if that is worth more than giving up `added`
+                    reraise = max(-added, e_r * (3 * final_pot) - (added + final_pot))
+                    values[a] = (f * pot + (1.0 - f - q) * (e_c * final_pot - added) + q * reraise
+                                 - params["raise_margin"] * pot)
+                else:
+                    values[a] = f * pot + (1.0 - f) * (e_c * final_pot - added) - params["raise_margin"] * pot
     best = max(values, key=values.get)
     if best in RAISES:
         memory["pending"] = (obs.street, ctx)
