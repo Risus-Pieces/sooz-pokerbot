@@ -24,6 +24,8 @@ DET = os.environ.get("SOOZ_DET") == "1"   # lab mode: pin T0 so A/B runs are rep
 
 A_WALL = 1.2
 B_REQ = 0.0004
+ROUTE_MULT = 1.4      # route timing misses parsing and scheduling delay outside our handler
+ROUTE_REQ = 0.0005
 
 
 class Gov:
@@ -33,14 +35,23 @@ class Gov:
         self.hunter_n = hunter_n
         self.wall = 0.0
         self.requests = 0
+        self.route = 0.0        # whole-request wall time measured by the server routes
+        self.route_req = 0
 
     def charge(self, seconds: float, request: bool) -> None:
         self.wall += seconds
         if request:
             self.requests += 1
 
+    def reconcile(self, route_seconds: float) -> None:
+        """Server mode: wall time of a whole /act request (JSON, model, hooks)."""
+        self.route += route_seconds
+        self.route_req += 1
+
     def charged(self) -> float:
-        return A_WALL * self.wall + B_REQ * self.requests
+        hooks = A_WALL * self.wall + B_REQ * self.requests
+        routes = ROUTE_MULT * self.route + ROUTE_REQ * self.route_req
+        return max(hooks, routes)
 
     def tier(self, hand_index: int) -> int:
         if DET:

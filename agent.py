@@ -207,6 +207,7 @@ async def route_new_half(request: Request):
 async def route_act(request: Request):
     """Deliver finished hands, then turn the JSON into an Observation, call
     choose_action(), and send the answer back."""
+    t_route = time.perf_counter()
     body, refused = await _read_request(request, "/act")
     if refused:
         return refused
@@ -223,6 +224,12 @@ async def route_act(request: Request):
         answer = action
     else:
         answer = repr(action)
+    try:  # the whole request counts against the judge's time bank, not just our hooks
+        gov = MEMORY.get("gov")
+        if gov is not None:
+            gov.reconcile(time.perf_counter() - t_route)
+    except Exception:  # noqa: BLE001
+        pass
     return {"action": answer, "hand_end_errors": hand_end_errors}
 
 
