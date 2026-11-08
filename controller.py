@@ -30,6 +30,8 @@ CFG = {
     "prior_sd": 0.6,        # prior on an arm's true mean (bb/hand)
     "prior_b": -0.05,       # B starts slightly behind H
     "hand_sd": 8.0,         # fallback per-hand sd before enough data
+    "start_mode": "H",      # "H" = stop-loss only; "compare" = Thompson sampling from hand 0
+    "warmup_hunter": 0,     # in compare mode: play hunter only for this many hands first
 }
 RAISES = (Action.RAISE_HALF, Action.RAISE_POT)
 
@@ -65,7 +67,7 @@ class ArmStats:
 
 def init(memory: dict) -> None:
     memory["arms"] = {"H": ArmStats(), "B": ArmStats()}
-    memory["ctl_mode"] = "H"
+    memory["ctl_mode"] = CFG["start_mode"]
     memory["arm"] = "H"
     memory["arm_hand"] = -1
 
@@ -82,7 +84,7 @@ def pick_arm(obs, memory: dict, bp_ok: bool, tier: int, rng) -> str:
             z = H.mean() / (H.sd() / math.sqrt(H.n))
             if H.mean() < CFG["loss_mean"] and z < CFG["loss_z"]:
                 memory["ctl_mode"] = "compare"
-        if memory["ctl_mode"] == "compare":
+        if memory["ctl_mode"] == "compare" and obs.hand_index >= CFG["warmup_hunter"]:
             mh, sh = H.posterior(0.0)
             mb, sb = B.posterior(CFG["prior_b"])
             arm = "B" if rng.normal(mb, sb) > rng.normal(mh, sh) else "H"

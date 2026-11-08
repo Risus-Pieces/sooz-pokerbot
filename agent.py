@@ -59,6 +59,9 @@ from governor import Gov
 from strategy import PARAMS, Stats, _update_model, choose, learn_from_hand, rng_for
 
 warm()  # load equity tables at startup, outside the time bank
+if os.environ.get("SOOZ_CTL"):      # lab only: override controller settings
+    import json as _json
+    controller.CFG.update(_json.loads(os.environ["SOOZ_CTL"]))
 if os.environ.get("SOOZ_PARAMS"):   # lab only: override strategy parameters
     import json as _json
     PARAMS.update(_json.loads(os.environ["SOOZ_PARAMS"]))
